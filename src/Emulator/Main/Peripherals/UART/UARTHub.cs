@@ -88,6 +88,12 @@ namespace Antmicro.Renode.Peripherals.UART
                 {
                     item.GetMachine().HandleTimeDomainEvent(item.WriteChar, obj, TimeDomainsManager.Instance.VirtualTimeStamp);
                 }
+
+                var loopback_flag = true;
+                if (loopback_flag)
+                {
+                    sender.WriteChar(obj);
+                }
             }
         }
 

@@ -12,6 +12,10 @@ using Antmicro.Renode.Logging;
 using Antmicro.Renode.Utilities;
 using Antmicro.Renode.Peripherals.Bus;
 
+using System.Threading;
+using System.Threading.Tasks;
+using Antmicro.Renode.Time;
+
 namespace Antmicro.Renode.Peripherals.UART
 {
     public class NRF52840_UART : UARTBase, IDoubleWordPeripheral, IKnownSize
@@ -82,7 +86,7 @@ namespace Antmicro.Renode.Peripherals.UART
         {
             if(enabled.Value == EnableState.Disabled || !rxStarted)
             {
-                this.Log(LogLevel.Warning, "Received a character, but the receiver is disabled.");
+                this.Log(LogLevel.Warning, "Received a character, but the receiver is disabled. enabled.Value: {0}, rxStarted: {1}", enabled.Value, rxStarted);
                 // The character should not be received. This is safe because QueueEmptied is not used
                 this.TryGetCharacter(out var _);
                 return;
@@ -151,6 +155,8 @@ namespace Antmicro.Renode.Peripherals.UART
                 {(long)Registers.ErrorDetected, GetEventRegister(Interrupts.Error, "EVENTS_ERROR")
                     // we don't use this interrupt - just want to hush the register
                 },
+                {(long)Registers.RxTimeout, GetEventRegister(Interrupts.ReceiveTimeout, "EVENTS_RXTO")
+                },
                 {(long)Registers.InterruptEnableSet, interruptManager.GetRegister<DoubleWordRegister>(
                     writeCallback: (interrupt, _, newValue) =>
                     {
@@ -177,27 +183,27 @@ namespace Antmicro.Renode.Peripherals.UART
                     .WithEnumField(0, 8, out enabled, name: "ENABLE")
                     .WithReservedBits(9, 23)
                 },
-                {(long)Registers.PinSelectRTS, new DoubleWordRegister(this, 0xFFFFFFFF)
-                    .WithTag("PIN", 0, 5)
-                    .WithTaggedFlag("PORT", 5)
+                {(long)Registers.PinSelectRTS, new DoubleWordRegister(this)  // 0x4 0x5
+                    .WithValueField(0, 5, out PinSelectRTSPin, name: "PIN")
+                    .WithFlag(5, out PinSelectRTSPort, name: "PORT")
                     .WithReservedBits(6, 25)
                     .WithTaggedFlag("CONNECT", 31)
                 },
-                {(long)Registers.PinSelectTXD, new DoubleWordRegister(this, 0xFFFFFFFF)
-                    .WithTag("PIN", 0, 5)
-                    .WithTaggedFlag("PORT", 5)
+                {(long)Registers.PinSelectTXD, new DoubleWordRegister(this)  // 0x03 0x21
+                    .WithValueField(0, 5, out PinSelectTXDPin, name: "PIN")
+                    .WithFlag(5, out PinSelectTXDPort, name: "PORT")
                     .WithReservedBits(6, 25)
                     .WithTaggedFlag("CONNECT", 31)
                 },
-                {(long)Registers.PinSelectCTS, new DoubleWordRegister(this, 0xFFFFFFFF)
-                    .WithTag("PIN", 0, 5)
-                    .WithTaggedFlag("PORT", 5)
+                {(long)Registers.PinSelectCTS, new DoubleWordRegister(this)  // 0x1E 0x7
+                    .WithValueField(0, 5, out PinSelectCTSPin, name: "PIN")
+                    .WithFlag(5, out PinSelectCTSPort, name: "PORT")
                     .WithReservedBits(6, 25)
                     .WithTaggedFlag("CONNECT", 31)
                 },
-                {(long)Registers.PinSelectRXD, new DoubleWordRegister(this, 0xFFFFFFFF)
-                    .WithTag("PIN", 0, 5)
-                    .WithTaggedFlag("PORT", 5)
+                {(long)Registers.PinSelectRXD, new DoubleWordRegister(this)  // 0x1F 0x22
+                    .WithValueField(0, 5, out PinSelectRXDPin, name: "PIN")
+                    .WithFlag(5, out PinSelectRXDPort, name: "PORT")
                     .WithReservedBits(6, 25)
                     .WithTaggedFlag("CONNECT", 31)
                 },
@@ -251,8 +257,6 @@ namespace Antmicro.Renode.Peripherals.UART
                 dict.Add((long)Registers.EndRx, GetEventRegister(Interrupts.EndReceive, "EVENTS_ENDRX"));
 
                 dict.Add((long)Registers.EndTx, GetEventRegister(Interrupts.EndTransmit, "EVENTS_ENDRX"));
-
-                dict.Add((long)Registers.RxTimeout, GetEventRegister(Interrupts.ReceiveTimeout, "EVENTS_RXTO"));
 
                 dict.Add((long)Registers.RxStarted, GetEventRegister(Interrupts.ReceiveStarted, "EVENTS_RXSTARTED"));
 
@@ -350,9 +354,26 @@ namespace Antmicro.Renode.Peripherals.UART
                 foreach(var character in bytesRead)
                 {
                     TransmitCharacter(character);
+                    // Thread.Sleep(100);
                 }
                 txAmount.Value = txMaximumCount.Value;
                 interruptManager.SetInterrupt(Interrupts.EndTransmit);
+
+                // var testerThread = new TestThread(() =>
+                // {
+                //     var bytesRead = this.Machine.SystemBus.ReadBytes(txPointer.Value, (int)txMaximumCount.Value);
+                //     foreach(var character in bytesRead)
+                //     {
+                //         TransmitCharacter(character);
+                //         Thread.Sleep(1);
+                //     }
+
+                //     txAmount.Value = txMaximumCount.Value;
+                //     interruptManager.SetInterrupt(Interrupts.EndTransmit);
+                // });
+
+                // testerThread.Start();
+
             }
             interruptManager.SetInterrupt(Interrupts.TransmitReady);
         }
@@ -405,6 +426,61 @@ namespace Antmicro.Renode.Peripherals.UART
         private IEnumRegisterField<ParityConfig> parity;
         private IEnumRegisterField<EnableState> enabled;
         private IFlagRegisterField stopBit;
+
+        private IValueRegisterField PinSelectRTSPin;
+        private IFlagRegisterField PinSelectRTSPort;
+        private IValueRegisterField PinSelectTXDPin;
+        private IFlagRegisterField PinSelectTXDPort;
+        private IValueRegisterField PinSelectCTSPin;
+        private IFlagRegisterField PinSelectCTSPort;
+        private IValueRegisterField PinSelectRXDPin;
+        private IFlagRegisterField PinSelectRXDPort;
+
+        private class TestThread
+        {
+            public TestThread(Action a)
+            {
+                underlyingAction = a;
+            }
+
+            public void Start()
+            {
+                underlyingThread = new Thread(InnerBody) { Name = this.Name };
+                underlyingThread.Start();
+            }
+
+            public void Join()
+            {
+                underlyingThread.Join();
+                CheckExceptions();
+            }
+
+            public void CheckExceptions()
+            {
+                if(caughtException != null)
+                {
+                    throw caughtException;
+                }
+            }
+
+            public string Name { get; set; }
+
+            private void InnerBody()
+            {
+                try
+                {
+                    underlyingAction();
+                }
+                catch(Exception e)
+                {
+                    caughtException = e;
+                }
+            }
+
+            private readonly Action underlyingAction;
+            private Exception caughtException;
+            private Thread underlyingThread;
+        }
 
         private enum Interrupts
         {
