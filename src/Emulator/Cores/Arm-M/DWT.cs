@@ -50,7 +50,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 .WithTag("FOLDEVTENA", 21, 1)
                 .WithTag("CYCEVTEN", 22, 1)
                 .WithReservedBits(23, 5)
-                .WithTag("NUMCOMP", 28, 4);
+                .WithValueField(28, 4, out numberOfComparators, name: "NUMCOMP");
             Registers.CycleCounter.Define(this)
                 .WithValueField(0, 32, writeCallback: (_, val) => { cycleCounter.Value = val; }, 
                     valueProviderCallback: _ => (uint)cycleCounter.Value, name: "CYCCNT");
@@ -176,6 +176,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         public long Size => 0x1000;
 
         private readonly LimitTimer cycleCounter;
+        private IValueRegisterField numberOfComparators;
 
         private enum Registers
         {
