@@ -170,6 +170,11 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             if((pin.Direction != NRF52840_GPIO.PinDirection.Input && !pin.InputOverride)
                || !TryGetChannel(pin, out var channel))
             {
+                if(TryGetChannel(pin, out var ch))
+                {
+                    //this.NoisyLog("TryGetChannel");
+                    ch.CurrentState = value;
+                }
                 return;
             }
 

@@ -279,6 +279,28 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
                 }
             }
 
+            // Driver - extendend form of Value - it allow to read output pins
+            public bool Driver
+            {
+                get
+                {
+                    if(Direction != PinDirection.Input)
+                    {
+                        return Parent.Connections[Id].IsSet;
+                    }
+                    return this.Value;
+                }
+
+                set
+                {
+                    // if((Direction == PinDirection.Input) && (value != this.Value))
+                    // {
+                    //     this.Direction = PinDirection.Output;
+                    // }
+                    this.Value = value;
+                }
+            }
+
             public PinDirection Direction { get; set; }
 
             public bool InputOverride { set; get; }
