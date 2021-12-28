@@ -11,6 +11,7 @@ using Antmicro.Renode.Core;
 using Antmicro.Renode.Core.Structure.Registers;
 using Antmicro.Renode.Peripherals.Bus;
 using Antmicro.Renode.Peripherals.Timers;
+using Antmicro.Renode.Logging;
 
 namespace Antmicro.Renode.Peripherals.Miscellaneous
 {
@@ -31,6 +32,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             //
             // Keep in mind that most of these registers do not affect other
             // peripherals or their clocks.
+            hardReset = true;
             IRQ = new GPIO();
             DefineRegisters();
         }
@@ -111,12 +113,38 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 .WithReservedBits(12, 20)
                 .WithWriteCallback((_, __) => Update());
 
+            Registers.ResetReason.Define(this)
+                .WithFlag(0, out ResetPin, mode: FieldMode.Read, valueProviderCallback: _ =>
+                {
+                    if(hardReset) {
+                        hardReset = false;
+                        return true;
+                    }
+                    else {
+                        return false;
+                    }
+                }, name: "RESETPIN")
+                .WithFlag(1, out Dog, mode: FieldMode.Read, name: "DOG")
+                .WithFlag(2, out Serq, mode: FieldMode.Read, valueProviderCallback: _ => true, name: "SREQ")
+                .WithFlag(3, out LockUp, mode: FieldMode.Read, name: "LOCKUP")
+                .WithReservedBits(4, 12)
+                .WithFlag(16, out Off, mode: FieldMode.Read, name: "OFF")
+                .WithFlag(17, out LpComp, mode: FieldMode.Read, name: "LPCOMP")
+                .WithFlag(18, out Dif, mode: FieldMode.Read, name: "DIF")
+                .WithFlag(19, out Nfc, mode: FieldMode.Read, name: "NFC")
+                .WithFlag(20, out VBus, mode: FieldMode.Read, name: "VBUS")
+                .WithReservedBits(21, 11);
+
             Registers.LFCLKClockSource.Define(this)
                 .WithValueField(0, 2, out var lfclkSource, name: "SRC")
                 .WithReservedBits(2, 14)
                 .WithFlag(16, name: "BYPASS")
                 .WithFlag(17, name: "EXTERNAL")
                 .WithReservedBits(18, 14);
+
+            Registers.GPRegRet.Define(this)
+                .WithValueField(0, 8,  out GeneralPurposeRetentionRegister, name: "GPREGRET")
+                .WithReservedBits(8, 24);
 
             Registers.HFCLKStatus.Define(this)
                 // true in the first bit indicates that hfclk is started. Not sure if it's possible to return true in STATE and false in SRC
@@ -139,6 +167,18 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private IFlagRegisterField hfclkStartedEventEnabled;
         private IFlagRegisterField hfclkEventGenerated;
 
+        private IFlagRegisterField ResetPin;
+        private IFlagRegisterField Dog;
+        private IFlagRegisterField Serq;
+        private IFlagRegisterField LockUp;
+        private IFlagRegisterField Off;
+        private IFlagRegisterField LpComp;
+        private IFlagRegisterField Dif;
+        private IFlagRegisterField Nfc;
+        private IFlagRegisterField VBus;
+        private IValueRegisterField GeneralPurposeRetentionRegister;
+        private bool hardReset;
+
         private enum Registers
         {
             StartHFXO = 0x0,
@@ -156,12 +196,14 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             CalibrationTimerStopped = 0x12C,
             EnableInterrupt = 0x304,
             DisableInterrupt = 0x308,
+            ResetReason = 0x400,
             HFCLKStartTriggered = 0x408,
             HFCLKStatus = 0x40C,
             LFCLKStartTriggered = 0x414,
             LFCLKStatus = 0x418,
             LFCLKClockSourceCopy = 0x41C,
             LFCLKClockSource = 0x518,
+            GPRegRet = 0x51C,
             HFXODebounceTime = 0x528,
             CallibrationTimerInterval = 0x538,
             TraceConfig = 0x55C,
